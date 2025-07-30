@@ -30,7 +30,7 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sshagent (credentials: [env.SSH_KEY_ID]) {
+                sshagent (credentials: ['ec2-ssh']) {
                     script {
                         def releaseName = "${params.DEPLOY_VERSION}"
                         def targetDir = "${env.REMOTE_DIR}/current"
