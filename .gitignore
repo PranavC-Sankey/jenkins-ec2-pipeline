@@ -1,0 +1,13 @@
+# Key files
+*.pem
+*.zip
+ 
+# System & environment files
+.DS_Store
+.env
+ 
+# Node dependencies
+node_modules/
+ 
+# VS Code settings
+.vscode/
