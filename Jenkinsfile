@@ -73,7 +73,7 @@ pipeline {
             steps {
                 script {
                     def result = sh (
-                        script: "curl -s -o /dev/null -w \"%{http_code}\" http://${env.REMOTE_HOST}:${env.PORT}",
+                        script: "curl -s -o /dev/null -w \"%{http_code}\" http://${env.REMOTE_HOST}:${env.PORT} || echo '000'",
                         returnStdout: true
                     ).trim()
 
