@@ -2,102 +2,70 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'DEPLOY_VERSION', defaultValue: 'v1', description: 'Deployment version label')
-        string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Git branch to deploy')
-        choice(name: 'ENV', choices: ['dev', 'staging', 'prod'], description: 'Target environment')
+        string(name: 'BRANCH_NAME', defaultValue: 'main', description: 'Enter the branch to build')
+        string(name: 'TARGET_ENVIRONMENT', defaultValue: 'prod', description: 'Target environment (e.g., dev, staging, prod)')
+        string(name: 'VERSION', defaultValue: 'v1.0.0', description: 'Deployment version label')
     }
 
     environment {
-        REMOTE_USER = 'ubuntu'
-        REMOTE_HOST = '13.221.163.36'
-        SSH_KEY_ID = 'ec2-ssh'
-        REMOTE_DIR = "/home/ubuntu/deployments/${params.ENV}"
-        PORT = '8080'
+        PEM_KEY_PATH = '/c/Program Files/Jenkins/keys/jenkinsdeployment.pem'
+        EC2_USER = 'ubuntu'
+        EC2_HOST = '13.221.163.36'
+        REPO_URL = 'https://github.com/PranavC-Sankey/jenkins-ec2-pipeline.git'
+        REMOTE_DEPLOY_DIR = '/tmp/static-build'
+        NGINX_ROOT_DIR = '/var/www/html'
+        GIT_BASH = '"C:\\Program Files\\Git\\bin\\bash.exe"'
     }
 
     stages {
-        stage('Checkout') {
+        stage('Clone Repository') {
             steps {
-                checkout([$class: 'GitSCM',
-                    branches: [[name: "${params.BRANCH_NAME}"]],
-                    userRemoteConfigs: [[
-                        url: 'https://github.com/PranavC-Sankey/jenkins-ec2-pipeline-demo.git',
-                        credentialsId: 'github-creds'
-                    ]]
-                ])
+                git branch: "${params.BRANCH_NAME}", url: "${env.REPO_URL}"
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to EC2') {
             steps {
-                sshagent (credentials: ['ec2-ssh']) {
-                    script {
-                        def releaseName = "${params.DEPLOY_VERSION}"
-                        def targetDir = "${env.REMOTE_DIR}/current"
-                        def backupDir = "${env.REMOTE_DIR}/previous"
-
-                        // Create env directories
-                        sh """
-                            ssh -o StrictHostKeyChecking=no ${env.REMOTE_USER}@${env.REMOTE_HOST} '
-                                mkdir -p ${targetDir}
-                            '
-                        """
-
-                        // Backup for prod
-                        if (params.ENV == 'prod') {
-                            sh """
-                                ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} '
-                                    rm -rf ${backupDir} && cp -r ${targetDir} ${backupDir}
-                                '
-                            """
-                        }
-
-                        // SCP files
-                        sh """
-                            scp -o StrictHostKeyChecking=no -r * ${env.REMOTE_USER}@${env.REMOTE_HOST}:${targetDir}
-                        """
-
-                        // Restart http-server
-                        sh """
-                            ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} '
-                                pkill -f "http-server .* ${targetDir}" || true
-                                npx http-server ${targetDir} -p ${env.PORT} > /dev/null 2>&1 &
-                            '
-                        """
-                    }
-                }
+                bat """
+                ${env.GIT_BASH} -c "
+                    chmod 400 '${env.PEM_KEY_PATH}' && \
+                    echo '📦 Backing up current deployment...' && \
+                    ssh -o StrictHostKeyChecking=no -i '${env.PEM_KEY_PATH}' ${env.EC2_USER}@${env.EC2_HOST} \\
+                        'sudo mkdir -p /tmp/rollback-${params.TARGET_ENVIRONMENT} && \\
+                         sudo rm -rf /tmp/rollback-${params.TARGET_ENVIRONMENT}/* && \\
+                         sudo cp -r ${env.NGINX_ROOT_DIR}/* /tmp/rollback-${params.TARGET_ENVIRONMENT}/' && \\
+                    echo '📤 Uploading static files...' && \
+                    scp -o StrictHostKeyChecking=no -i '${env.PEM_KEY_PATH}' index.html style.css script.js \\
+                        ${env.EC2_USER}@${env.EC2_HOST}:${env.REMOTE_DEPLOY_DIR}/ && \\
+                    echo '⚙️ Deploying to NGINX...' && \
+                    ssh -o StrictHostKeyChecking=no -i '${env.PEM_KEY_PATH}' ${env.EC2_USER}@${env.EC2_HOST} \\
+                        'sudo rm -rf ${env.NGINX_ROOT_DIR}/* && \\
+                         sudo cp -r ${env.REMOTE_DEPLOY_DIR}/* ${env.NGINX_ROOT_DIR}/ && \\
+                         echo Deployed ${params.VERSION} to ${params.TARGET_ENVIRONMENT} on \$(date) | sudo tee ${env.NGINX_ROOT_DIR}/VERSION.txt && \\
+                         sudo systemctl restart nginx'
+                "
+                """
             }
         }
+    }
 
-        stage('Verify') {
-            steps {
-                script {
-                    def result = sh (
-                        script: "curl -s -o /dev/null -w \"%{http_code}\" http://${env.REMOTE_HOST}:${env.PORT} || echo '000'",
-                        returnStdout: true
-                    ).trim()
+    post {
+        success {
+            echo "✅ Deployment successful from branch: ${params.BRANCH_NAME}"
+        }
 
-                    if (result != "200") {
-                        if (params.ENV == 'prod') {
-                            echo "Deployment failed — rolling back!"
-                            sshagent (credentials: [env.SSH_KEY_ID]) {
-                                sh """
-                                    ssh ${env.REMOTE_USER}@${env.REMOTE_HOST} '
-                                        rm -rf ${env.REMOTE_DIR}/current
-                                        cp -r ${env.REMOTE_DIR}/previous ${env.REMOTE_DIR}/current
-                                        pkill -f "http-server .* ${env.REMOTE_DIR}/current" || true
-                                        npx http-server ${env.REMOTE_DIR}/current -p ${env.PORT} > /dev/null 2>&1 &
-                                    '
-                                """
-                            }
-                        } else {
-                            error("Deployment failed (non-200 response), skipping rollback for non-prod")
-                        }
-                    } else {
-                        echo "Deployment successful! Status 200 received."
-                    }
-                }
-            }
+        failure {
+            echo "❌ Deployment failed, attempting rollback..."
+            bat """
+            ${env.GIT_BASH} -c "
+                chmod 400 '${env.PEM_KEY_PATH}' && \
+                ssh -o StrictHostKeyChecking=no -i '${env.PEM_KEY_PATH}' ${env.EC2_USER}@${env.EC2_HOST} \\
+                    'sudo rm -rf ${env.NGINX_ROOT_DIR}/* && \\
+                     sudo cp -r /tmp/rollback-${params.TARGET_ENVIRONMENT}/* ${env.NGINX_ROOT_DIR}/ && \\
+                     echo Rolled back on \$(date) | sudo tee ${env.NGINX_ROOT_DIR}/VERSION.txt && \\
+                     sudo systemctl restart nginx'
+            "
+            """
         }
     }
 }
