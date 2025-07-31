@@ -8,13 +8,13 @@ pipeline {
     }
 
     environment {
-        PEM_KEY_PATH = '/c/Program Files/Jenkins/keys/jenkinsdeployment.pem'
+        PEM_KEY_PATH = 'c/Program Files/Jenkins/Todo App Server Key.pem'
         EC2_USER = 'ubuntu'
         EC2_HOST = '13.221.163.36'
         REPO_URL = 'https://github.com/PranavC-Sankey/jenkins-ec2-pipeline.git'
         REMOTE_DEPLOY_DIR = '/tmp/static-build'
         NGINX_ROOT_DIR = '/var/www/html'
-        GIT_BASH = '"C:\\Program Files\\Git\\bin\\bash.exe"'
+        GIT_BASH = 'C:\\Program Files\\Git\\bin\\bash.exe'
     }
 
     stages {
