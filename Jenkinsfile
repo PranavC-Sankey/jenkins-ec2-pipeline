@@ -8,7 +8,7 @@ pipeline {
     }
 
     environment {
-        PEM_KEY_PATH = 'c/Program Files/Jenkins/Todo App Server Key.pem'
+        PEM_KEY_PATH = "C:\\Program Files\\Jenkins\\Todo App Server Key.pem"
         EC2_USER = 'ubuntu'
         EC2_HOST = '13.221.163.36'
         REPO_URL = 'https://github.com/PranavC-Sankey/jenkins-ec2-pipeline.git'
