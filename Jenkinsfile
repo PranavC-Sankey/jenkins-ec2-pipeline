@@ -10,8 +10,8 @@ pipeline {
     environment {
         PEM_KEY_PATH = 'C:\\Program Files\\Jenkins\\Todo App Server Key.pem'
         EC2_USER = 'ubuntu'
-        EC2_HOST = '13.221.163.36'
-        REPO_URL = 'https://github.com/PranavC-Sankey/jenkins-ec2-pipeline.git'
+        EC2_HOST = '12.456.31.344'
+REPO_URL = 'https://github.com/myuname/my repo.git'
         REMOTE_DEPLOY_DIR = '/tmp/static-build'
         NGINX_ROOT_DIR = '/var/www/html'
         GIT_BASH = "C:\\Program Files\\Git\\bin\\bash.exe"
@@ -24,13 +24,18 @@ pipeline {
             }
         }
         
+        stage('Make Deploy Script Executable') {
+            steps {
+                bat '''
+"%GIT_BASH%" -c "chmod +x ./deploy.sh"
+                '''
+            }
+        }
+        
         stage('Deploy to EC2') {
             steps {
                 bat '''
-                    echo "Starting deployment process..."
-                    
-                    "%GIT_BASH%" -c " chmod 400 '%PEM_KEY_PATH%' echo '📦 Backup current deployment...' ssh -o StrictHostKeyChecking=no -i '%PEM_KEY_PATH%' %EC2_USER%@%EC2_HOST% ' sudo mkdir -p /tmp/rollback-%TARGET_ENVIRONMENT% && sudo rm -rf /tmp/rollback-%TARGET_ENVIRONMENT%/* && sudo cp -r %NGINX_ROOT_DIR%/* /tmp/rollback-%TARGET_ENVIRONMENT%/ '  echo '📤 Uploading build...' scp -o StrictHostKeyChecking=no -i '%PEM_KEY_PATH%' -r dist/* %EC2_USER%@%EC2_HOST%:%REMOTE_DEPLOY_DIR%/  echo '⚙️ Deploying new build...' ssh -o StrictHostKeyChecking=no -i '%PEM_KEY_PATH%' %EC2_USER%@%EC2_HOST% ' sudo rm -rf %NGINX_ROOT_DIR%/* && sudo cp -r %REMOTE_DEPLOY_DIR%/* %NGINX_ROOT_DIR%/ && echo \"Deployed %VERSION% to %TARGET_ENVIRONMENT% on $(date)\" | sudo tee %NGINX_ROOT_DIR%/VERSION.txt && sudo systemctl restart nginx '  echo '✅ Deployment completed successfully!'
-                    "
+"%GIT_BASH%" -c "./deploy.sh deploy"
                 '''
             }
         }
@@ -46,11 +51,7 @@ pipeline {
         failure {
             echo "❌ Deployment failed, attempting rollback..."
             bat '''
-                echo "Starting rollback process..."
-                
-                "%GIT_BASH%" -c "
-                    chmod 400 '%PEM_KEY_PATH%' echo '🔄 Rolling back to previous version...' ssh -o StrictHostKeyChecking=no -i '%PEM_KEY_PATH%' %EC2_USER%@%EC2_HOST% ' sudo rm -rf %NGINX_ROOT_DIR%/* && sudo cp -r /tmp/rollback-%TARGET_ENVIRONMENT%/* %NGINX_ROOT_DIR%/ && echo \"Rolled back on $(date)\" | sudo tee %NGINX_ROOT_DIR%/VERSION.txt && sudo systemctl restart nginx' echo '✅ Rollback completed!'
-                "
+"%GIT_BASH%" -c "./deploy.sh rollback"
             '''
         }
     }
