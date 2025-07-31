@@ -28,8 +28,8 @@ if [ "$ACTION" = "deploy" ]; then
         sudo cp -r $NGINX_ROOT_DIR/* /tmp/rollback-$TARGET_ENVIRONMENT/ 2>/dev/null || echo 'No existing files to backup'
     "
     
-    echo "📤 Uploading build files..."
-    scp -o StrictHostKeyChecking=no -i "$PEM_KEY_UNIX" -r dist/* $EC2_USER@$EC2_HOST:$REMOTE_DEPLOY_DIR/
+    echo "📤 Uploading static files..."
+    scp -o StrictHostKeyChecking=no -i "$PEM_KEY_UNIX" -r index.html style.css script.js $EC2_USER@$EC2_HOST:$REMOTE_DEPLOY_DIR/
     
     echo "⚙️ Deploying new build..."
     ssh -o StrictHostKeyChecking=no -i "$PEM_KEY_UNIX" $EC2_USER@$EC2_HOST "
